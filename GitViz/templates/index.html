@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GitViz — Git Repository Visualizer</title>
+<style>
+/* ── CSS Variables (GitHub Dark Theme) ──────────────── */
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #1c2128;
+  --bg-hover: #1c2533;
+  --bg-active: #292e3a;
+  --border-primary: #30363d;
+  --border-secondary: #21262d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-tertiary: #6e7681;
+  --accent-blue: #58a6ff;
+  --accent-green: #3fb950;
+  --accent-red: #f85149;
+  --accent-orange: #d29922;
+  --accent-purple: #bc8cff;
+  --diff-green-bg: rgba(63, 185, 80, 0.15);
+  --diff-green-border: #3fb950;
+  --diff-red-bg: rgba(248, 81, 73, 0.15);
+  --diff-red-border: #f85149;
+  --shadow: 0 8px 24px rgba(0,0,0,0.4);
+  --radius: 8px;
+  --radius-sm: 4px;
+  --font-mono: 'Cascadia Code','JetBrains Mono','Fira Code','Consolas',monospace;
+  --font-sans: -apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,sans-serif;
+}
+
+/* ── Reset & Base ───────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+input, button, select { font-family: inherit; font-size: inherit; }
+
+a { color: var(--accent-blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Scrollbar ──────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-primary); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* ── Header / Top Bar ──────────────────────────────── */
+header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent-blue);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.logo svg { width: 24px; height: 24px; }
+
+.repo-selector {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 600px;
+}
+
+.repo-selector input {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.repo-selector input:focus { border-color: var(--accent-blue); }
+.repo-selector input::placeholder { color: var(--text-tertiary); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--bg-hover); border-color: var(--text-tertiary); }
+.btn:active { background: var(--bg-active); }
+.btn-primary { background: #238636; border-color: rgba(240,246,252,0.1); color: #fff; }
+.btn-primary:hover { background: #2ea043; }
+.btn-danger { color: var(--accent-red); }
+.btn-danger:hover { background: rgba(248,81,73,0.15); border-color: var(--accent-red); }
+.btn-sm { padding: 3px 10px; font-size: 12px; }
+.btn-icon { padding: 6px; border: none; background: none; color: var(--text-secondary); }
+.btn-icon:hover { color: var(--text-primary); background: var(--bg-hover); border-radius: var(--radius-sm); }
+
+.repo-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  padding: 0 8px;
+  border-left: 1px solid var(--border-primary);
+}
+.repo-name { font-weight: 600; color: var(--text-primary); }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.badge-branch { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
+.badge-commit { background: var(--bg-tertiary); color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; }
+
+/* ── Welcome Screen ────────────────────────────────── */
+#welcomeScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: calc(100vh - 56px);
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.welcome-icon { margin-bottom: 24px; }
+.welcome-icon svg { width: 80px; height: 80px; }
+
+.welcome-title { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+.welcome-sub { color: var(--text-secondary); font-size: 16px; margin-bottom: 32px; }
+
+.welcome-form {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 500px;
+  margin-bottom: 12px;
+}
+.welcome-form input {
+  flex: 1;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+}
+.welcome-form input:focus { border-color: var(--accent-blue); }
+.welcome-form .btn { padding: 10px 24px; font-size: 14px; }
+
+.welcome-hint { font-size: 12px; color: var(--text-tertiary); margin-bottom: 32px; }
+
+.recent-list {
+  width: 100%;
+  max-width: 500px;
+}
+.recent-list h3 { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; text-align: left; }
+.recent-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.recent-item:hover { background: var(--bg-hover); }
+.recent-item-path { font-size: 13px; color: var(--text-primary); }
+.recent-item-icon { color: var(--text-tertiary); font-size: 11px; }
+.recent-empty { font-size: 13px; color: var(--text-tertiary); text-align: left; }
+
+/* ── Main Layout ───────────────────────────────────── */
+#repoView {
+  display: none;
+  height: calc(100vh - 56px);
+  flex-direction: column;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 24px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.toolbar .btn-group { display: flex; gap: 2px; }
+.toolbar .btn-group .btn {
+  border-radius: 0;
+  font-size: 12px;
+}
+.toolbar .btn-group .btn:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.toolbar .btn-group .btn:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.toolbar .btn-group .btn.active { background: var(--bg-active); border-color: var(--text-tertiary); color: var(--accent-blue); }
+
+.toolbar-spacer { flex: 1; }
+
+.content-area {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 24px;
+}
+
+/* ── Tab views ─────────────────────────────────────── */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ── Commit Timeline ───────────────────────────────── */
+.timeline { position: relative; padding: 8px 0; }
+
+.commit-entry {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  background: var(--bg-secondary);
+  transition: border-color 0.15s;
+  cursor: pointer;
+  position: relative;
+}
+.commit-entry:hover {
+  border-color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+}
+.commit-entry.selected {
+  border-color: var(--accent-blue);
+  background: rgba(88,166,255,0.08);
+}
+
+/* ── HEAD commit highlight ──────────────────────── */
+.commit-entry.commit-head {
+  border-color: var(--accent-blue);
+  background: linear-gradient(135deg, rgba(88,166,255,0.06), rgba(88,166,255,0.02));
+  box-shadow: 0 0 12px rgba(88,166,255,0.08);
+}
+.commit-head-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  background: rgba(88,166,255,0.12);
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+.head-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  animation: headPulse 2s ease-in-out infinite;
+}
+@keyframes headPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+.commit-dot.head-dot-animated {
+  box-shadow: 0 0 8px var(--accent-blue), 0 0 16px rgba(88,166,255,0.4);
+  animation: dotGlow 2s ease-in-out infinite;
+}
+@keyframes dotGlow {
+  0%, 100% { box-shadow: 0 0 6px var(--accent-blue), 0 0 12px rgba(88,166,255,0.3); }
+  50% { box-shadow: 0 0 12px var(--accent-blue), 0 0 24px rgba(88,166,255,0.6); }
+}
+
+.commit-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+  position: relative;
+  z-index: 1;
+}
+.commit-dot.merge { background: var(--accent-orange); }
+.commit-dot.normal { background: var(--accent-blue); }
+.commit-dot.root { background: var(--accent-green); }
+
+.commit-body { flex: 1; min-width: 0; }
+
+.commit-message {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.commit-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.commit-meta .author { font-weight: 500; }
+.commit-meta .date { }
+.commit-hash {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.commit-refs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.ref-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.ref-badge.branch-main { background: rgba(63,185,80,0.2); color: var(--accent-green); border: 1px solid rgba(63,185,80,0.3); }
+.ref-badge.branch-dev { background: rgba(88,166,255,0.2); color: var(--accent-blue); border: 1px solid rgba(88,166,255,0.3); }
+.ref-badge.branch-feature { background: rgba(188,140,255,0.2); color: var(--accent-purple); border: 1px solid rgba(188,140,255,0.3); }
+.ref-badge.branch-fix { background: rgba(210,153,34,0.2); color: var(--accent-orange); border: 1px solid rgba(210,153,34,0.3); }
+.ref-badge.tag { background: rgba(56,139,253,0.2); color: #58a6ff; border: 1px solid rgba(56,139,253,0.3); }
+.ref-badge.HEAD { background: rgba(248,81,73,0.2); color: var(--accent-red); border: 1px solid rgba(248,81,73,0.3); }
+
+.commit-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: flex-start;
+}
+
+/* ── Commit Detail Panel ───────────────────────────── */
+#commitDetailPanel {
+  display: none;
+  position: fixed;
+  top: 56px;
+  right: -480px;
+  width: 480px;
+  max-width: 100%;
+  height: calc(100vh - 56px);
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-primary);
+  box-shadow: var(--shadow);
+  z-index: 20;
+  transition: right 0.25s ease;
+  overflow-y: auto;
+  padding: 20px;
+}
+#commitDetailPanel.open { right: 0; display: block; }
+#commitDetailPanel.close { right: -480px; }
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-primary);
+}
+.detail-header h3 { font-size: 18px; font-weight: 600; }
+.detail-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+.detail-close:hover { color: var(--text-primary); }
+
+.detail-meta {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+.detail-meta-item {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.detail-meta-item .label { color: var(--text-tertiary); min-width: 60px; }
+.detail-meta-item .value { color: var(--text-primary); }
+.detail-meta-item .value.mono { font-family: var(--font-mono); font-size: 12px; }
+
+.detail-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+}
+
+.detail-files { margin-bottom: 16px; }
+.detail-files h4 { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+.file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.file-item:hover { background: var(--bg-hover); }
+.file-item .file-path { font-family: var(--font-mono); font-size: 12px; }
+.file-item .file-changes { font-size: 11px; font-family: var(--font-mono); }
+.file-status-A { color: var(--accent-green); }
+.file-status-M { color: var(--accent-orange); }
+.file-status-D { color: var(--accent-red); }
+
+.diff-view {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.diff-header {
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+.diff-line {
+  padding: 0 12px;
+  white-space: pre;
+  display: flex;
+}
+.diff-line-num {
+  color: var(--text-tertiary);
+  min-width: 40px;
+  text-align: right;
+  padding-right: 12px;
+  user-select: none;
+  border-right: 1px solid var(--border-primary);
+  margin-right: 12px;
+}
+.diff-line.add { background: var(--diff-green-bg); }
+.diff-line.add .diff-line-num { border-color: var(--diff-green-border); }
+.diff-line.del { background: var(--diff-red-bg); }
+.diff-line.del .diff-line-num { border-color: var(--diff-red-border); }
+.diff-line.hunk { color: var(--accent-blue); background: rgba(88,166,255,0.08); }
+
+/* ── Branches View ─────────────────────────────────── */
+.branch-list { max-width: 600px; }
+.branch-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  background: var(--bg-secondary);
+}
+.branch-item.current {
+  border-color: var(--accent-blue);
+  background: rgba(88,166,255,0.05);
+}
+.branch-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+.branch-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.branch-current-tag {
+  font-size: 10px;
+  background: var(--accent-blue);
+  color: #fff;
+  padding: 1px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+}
+.branch-actions { display: flex; gap: 4px; }
+
+/* ── Status View ───────────────────────────────────── */
+.status-list { max-width: 600px; }
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-secondary);
+  font-size: 13px;
+}
+.status-item:last-child { border-bottom: none; }
+.status-icon {
+  width: 20px;
+  text-align: center;
+  font-size: 14px;
+}
+.status-icon.M { color: var(--accent-orange); }
+.status-icon.A { color: var(--accent-green); }
+.status-icon.D { color: var(--accent-red); }
+.status-icon.\? { color: var(--text-tertiary); }
+.status-path { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); }
+.status-type { font-size: 11px; color: var(--text-secondary); }
+.status-clean {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-tertiary);
+}
+.status-clean svg { margin-bottom: 12px; }
+
+/* ── Actions View ──────────────────────────────────── */
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  max-width: 800px;
+}
+.action-card {
+  padding: 20px;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+}
+.action-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.action-card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+.action-card .btn { width: 100%; justify-content: center; }
+
+/* ── Loading & Status ──────────────────────────────── */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--text-tertiary);
+  gap: 10px;
+}
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-primary);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  z-index: 100;
+  transform: translateY(100px);
+  opacity: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.error { border-color: var(--accent-red); }
+.toast.success { border-color: var(--accent-green); }
+
+/* ── Modal ─────────────────────────────────────────── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 50;
+  justify-content: center;
+  align-items: center;
+}
+.modal-overlay.active { display: flex; }
+
+.modal-box {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px;
+  width: 90%;
+  max-width: 480px;
+}
+.modal-box h3 { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
+.modal-box p { font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; }
+.modal-box .form-group { margin-bottom: 16px; }
+.modal-box .form-group label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+.modal-box .form-group select {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  outline: none;
+}
+.modal-box .form-group .warning-text {
+  font-size: 12px;
+  color: var(--accent-orange);
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(210,153,34,0.1);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(210,153,34,0.2);
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ── Empty State ───────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-tertiary);
+}
+.empty-state svg { margin-bottom: 16px; }
+.empty-state h3 { font-size: 18px; color: var(--text-secondary); margin-bottom: 8px; }
+.empty-state p { font-size: 14px; }
+
+/* ── Responsive ────────────────────────────────────── */
+@media (max-width: 768px) {
+  header { padding: 0 12px; gap: 12px; }
+  .repo-selector input { font-size: 12px; }
+  .content-area { padding: 12px; }
+  #commitDetailPanel { width: 100%; }
+  .toolbar { flex-wrap: wrap; }
+  .actions-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ─── Header ──────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="18" r="4"/>
+      <path d="M12 2v12"/>
+      <path d="M12 14l-3.5-3.5a4 4 0 0 1 0-5.66l.5-.5"/>
+      <path d="M12 14l3.5-3.5a4 4 0 0 0 0-5.66l-.5-.5"/>
+    </svg>
+    GitViz
+  </div>
+  <div class="repo-selector">
+    <input type="text" id="repoPathInput" placeholder="输入或粘贴本地 Git 仓库路径..." />
+    <button class="btn btn-primary" onclick="openRepo()">打开</button>
+    <button class="btn" onclick="browseRepo()">浏览...</button>
+  </div>
+  <div class="repo-info-bar" id="infoBar" style="display:none">
+    <span class="repo-name" id="displayRepoName"></span>
+    <span class="badge badge-branch" id="displayBranch">main</span>
+    <span class="badge badge-commit" id="displayCommitCount">0 commits</span>
+  </div>
+</header>
+
+<!-- ─── Welcome Screen ──────────────────────────── -->
+<div id="welcomeScreen">
+  <div class="welcome-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="18" r="4"/>
+      <path d="M12 2v12"/>
+      <path d="M12 14l-3.5-3.5a4 4 0 0 1 0-5.66l.5-.5"/>
+      <path d="M12 14l3.5-3.5a4 4 0 0 0 0-5.66l-.5-.5"/>
+    </svg>
+  </div>
+  <h1 class="welcome-title">GitViz</h1>
+  <p class="welcome-sub">可视化浏览和管理你的 Git 仓库</p>
+
+  <div class="welcome-form">
+    <input type="text" id="welcomePathInput" placeholder="输入 Git 仓库路径，例如：C:\Users\me\my-project" />
+    <button class="btn btn-primary" onclick="openRepoFromWelcome()">打开仓库</button>
+  </div>
+  <p class="welcome-hint">💡 输入本地 Git 仓库的完整路径，或点击下方按钮快速扫描</p>
+
+  <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;justify-content:center">
+    <button class="btn" onclick="quickScan()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      快速扫描
+    </button>
+    <button class="btn" onclick="scanPath('C:/Users/ch/Desktop')">
+      📂 扫描桌面
+    </button>
+    <button class="btn" onclick="scanPath('C:/Users/ch/source')">
+      📂 扫描 source
+    </button>
+    <button class="btn" onclick="scanPath('.')">
+      📂 扫描当前目录
+    </button>
+  </div>
+
+  <div id="scanResults" style="width:100%;max-width:500px;display:none">
+    <div id="scanLoading" class="loading" style="display:none"><div class="spinner"></div> 正在扫描 Git 仓库...</div>
+    <div id="scanList"></div>
+  </div>
+
+  <div class="recent-list" id="recentList" style="margin-top:12px">
+    <h3>最近的仓库</h3>
+    <div id="recentItems"></div>
+  </div>
+</div>
+
+<!-- ─── Repo View ──────────────────────────────── -->
+<div id="repoView">
+  <div class="toolbar">
+    <div class="btn-group">
+      <button class="btn active" data-view="history" onclick="switchView('history')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+        历史
+      </button>
+      <button class="btn" data-view="branches" onclick="switchView('branches')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        分支
+      </button>
+      <button class="btn" data-view="status" onclick="switchView('status')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        状态
+      </button>
+      <button class="btn" data-view="actions" onclick="switchView('actions')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        操作
+      </button>
+    </div>
+    <div class="toolbar-spacer"></div>
+    <button class="btn btn-sm" onclick="closeRepo()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+      关闭仓库
+    </button>
+    <button class="btn btn-sm" onclick="refreshRepo()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      刷新
+    </button>
+  </div>
+
+  <div class="content-area">
+
+    <!-- ── History Tab ──────────────────────────── -->
+    <div id="tab-history" class="tab-content active">
+      <div id="commitTimeline" class="timeline">
+        <div class="loading"><div class="spinner"></div> 加载提交历史...</div>
+      </div>
+    </div>
+
+    <!-- ── Branches Tab ─────────────────────────── -->
+    <div id="tab-branches" class="tab-content">
+      <div class="loading"><div class="spinner"></div> 加载分支信息...</div>
+    </div>
+
+    <!-- ── Status Tab ───────────────────────────── -->
+    <div id="tab-status" class="tab-content">
+      <div class="loading"><div class="spinner"></div> 加载工作区状态...</div>
+    </div>
+
+    <!-- ── Actions Tab ──────────────────────────── -->
+    <div id="tab-actions" class="tab-content">
+      <div class="actions-grid" id="actionsGrid">
+        <div class="action-card">
+          <h4>📦 下载压缩包</h4>
+          <p>将指定提交的仓库状态打包为 ZIP 文件下载</p>
+          <button class="btn btn-primary" onclick="showResetModal()">选择提交并下载</button>
+        </div>
+        <div class="action-card">
+          <h4>⏪ 版本回退</h4>
+          <p>将仓库回退到历史中的某个提交<br>
+          <span style="font-size:12px;color:var(--text-tertiary)">软回退：保留工作区更改 / 硬回退：丢弃所有更改</span></p>
+          <button class="btn btn-danger" onclick="showResetModal()">回退到指定提交</button>
+        </div>
+        <div class="action-card">
+          <h4>🌿 创建分支</h4>
+          <p>基于当前 HEAD 创建新的功能分支</p>
+          <button class="btn" onclick="showCreateBranchModal()">创建分支</button>
+        </div>
+        <div class="action-card">
+          <h4>📋 仓库信息</h4>
+          <p>查看当前仓库的完整信息摘要</p>
+          <button class="btn" onclick="showRepoInfo()">查看信息</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ─── Commit Detail Panel (slide-in) ──────────── -->
+<div id="commitDetailPanel">
+  <div class="detail-header">
+    <h3 id="detailTitle">提交详情</h3>
+    <button class="detail-close" onclick="closeDetail()">&times;</button>
+  </div>
+  <div class="detail-meta" id="detailMeta"></div>
+  <div class="detail-body" id="detailBody" style="display:none"></div>
+  <div class="detail-files" id="detailFiles"></div>
+  <div id="detailDiff"></div>
+</div>
+
+<!-- ─── Reset Modal ─────────────────────────────── -->
+<div class="modal-overlay" id="resetModal">
+  <div class="modal-box">
+    <h3>⏪ 版本回退</h3>
+    <p>选择回退模式和目标提交。你可以在时间线中点击任意提交来设定目标。</p>
+    <div class="form-group">
+      <label>目标提交</label>
+      <div style="font-family:var(--font-mono);font-size:13px;padding:8px 12px;background:var(--bg-primary);border-radius:var(--radius-sm);" id="resetTargetHash">
+        在历史中点击选择一个提交
+      </div>
+    </div>
+    <div class="form-group">
+      <label>回退模式</label>
+      <select id="resetMode">
+        <option value="soft">软回退 (soft) — 保留所有更改，已暂存</option>
+        <option value="mixed">混合回退 (mixed) — 保留所有更改，未暂存</option>
+        <option value="hard">硬回退 (hard) — ⚠️ 丢弃所有更改</option>
+      </select>
+    </div>
+    <div id="hardWarning" class="form-group" style="display:none">
+      <div class="warning-text">
+        ⚠️ 硬回退将<strong>永久丢弃</strong>目标提交之后的所有更改！此操作不可逆。建议先创建分支备份。
+      </div>
+    </div>
+    <div class="form-group">
+      <label>同时下载该提交的 ZIP 压缩包</label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:4px">
+        <input type="checkbox" id="alsoArchive" style="accent-color:var(--accent-blue)" />
+        <span style="font-size:13px">回退前先备份为 ZIP</span>
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeResetModal()">取消</button>
+      <button class="btn btn-danger" onclick="executeReset()">确认回退</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Create Branch Modal ─────────────────────── -->
+<div class="modal-overlay" id="createBranchModal">
+  <div class="modal-box">
+    <h3>🌿 创建分支</h3>
+    <p>基于当前 HEAD 创建一个新分支。</p>
+    <div class="form-group">
+      <label>分支名称</label>
+      <input type="text" id="newBranchName" placeholder="例如：feature/new-feature" style="width:100%;padding:8px 12px;background:var(--bg-primary);border:1px solid var(--border-primary);border-radius:var(--radius-sm);color:var(--text-primary);outline:none" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeCreateBranchModal()">取消</button>
+      <button class="btn btn-primary" onclick="executeCreateBranch()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Repo Info Modal ─────────────────────────── -->
+<div class="modal-overlay" id="repoInfoModal">
+  <div class="modal-box">
+    <h3>📋 仓库信息</h3>
+    <div id="repoInfoContent"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeRepoInfoModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Toast Notification ──────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────
+const state = {
+  repoPath: null,
+  commits: [],
+  selectedCommit: null,
+  branches: [],
+};
+
+// ─── API Helpers ──────────────────────────────────────
+async function api(method, path, body) {
+  try {
+    const opts = { method, headers: {} };
+    if (body) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const res = await fetch(path, opts);
+    let data;
+    try {
+      data = await res.json();
+    } catch (jsonErr) {
+      // Response was not JSON (probably HTML error page)
+      const text = await res.text();
+      console.error(`[GitViz] Non-JSON response for ${method} ${path} (${res.status}):`, text.substring(0, 200));
+      throw new Error(`Server error (${res.status}): ${text.substring(0, 100)}`);
+    }
+    if (!res.ok) {
+      const errMsg = data.error || `HTTP ${res.status} ${res.statusText}`;
+      console.error(`[GitViz] API error ${res.status} for ${method} ${path}:`, errMsg);
+      throw new Error(errMsg);
+    }
+    return data;
+  } catch (e) {
+    if (e.name !== 'Error') throw e;
+    showToast(e.message, 'error');
+    console.error(`[GitViz] fetch error for ${method} ${path}:`, e);
+    throw e;
+  }
+}
+
+function showToast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + (type || '') + ' show';
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ─── Welcome Screen ──────────────────────────────────
+function openRepoFromWelcome() {
+  const path = document.getElementById('welcomePathInput').value.trim();
+  if (!path) return showToast('请输入仓库路径', 'error');
+  doOpenRepo(path);
+}
+
+function openRepo() {
+  const path = document.getElementById('repoPathInput').value.trim();
+  if (!path) return showToast('请输入仓库路径', 'error');
+  doOpenRepo(path);
+}
+
+function browseRepo() {
+  // Use a prompt-style approach since we can't use native file dialog
+  const path = prompt('请输入 Git 仓库的完整路径：');
+  if (path && path.trim()) {
+    document.getElementById('repoPathInput').value = path.trim();
+    doOpenRepo(path.trim());
+  }
+}
+
+async function doOpenRepo(path) {
+  showToast('正在打开仓库...');
+  try {
+    const result = await api('POST', '/api/open', { path });
+    state.repoPath = path;
+    document.getElementById('welcomeScreen').style.display = 'none';
+    document.getElementById('repoView').style.display = 'flex';
+    document.getElementById('infoBar').style.display = 'flex';
+    document.getElementById('repoPathInput').value = path;
+
+    const info = result.info;
+    document.getElementById('displayRepoName').textContent = info.name;
+    document.getElementById('displayBranch').textContent = info.current_branch;
+    document.getElementById('displayCommitCount').textContent = `${info.commit_count} commits`;
+
+    // Update recent list
+    if (result.recent_repos) renderRecentRepos(result.recent_repos);
+
+    // Load all views
+    switchView('history');
+    loadCommitLog();
+    loadBranches();
+    loadStatus();
+    showToast(`已打开 ${info.name} (${info.current_branch})`, 'success');
+  } catch (e) {
+    showToast(`无法打开仓库: ${e.message}`, 'error');
+  }
+}
+
+function closeRepo() {
+  state.repoPath = null;
+  state.commits = [];
+  state.selectedCommit = null;
+  document.getElementById('repoView').style.display = 'none';
+  document.getElementById('welcomeScreen').style.display = 'flex';
+  document.getElementById('infoBar').style.display = 'none';
+  document.getElementById('welcomePathInput').value = '';
+  closeDetail();
+}
+
+async function refreshRepo() {
+  if (!state.repoPath) return;
+  showToast('刷新中...');
+  loadCommitLog();
+  loadBranches();
+  loadStatus();
+  try {
+    const info = await api('GET', '/api/repo/info');
+    document.getElementById('displayBranch').textContent = info.current_branch;
+    document.getElementById('displayCommitCount').textContent = `${info.commit_count} commits`;
+  } catch (e) {}
+  showToast('已刷新', 'success');
+}
+
+// ─── Tab Switching ────────────────────────────────────
+function switchView(view) {
+  document.querySelectorAll('.toolbar .btn-group .btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.toolbar .btn-group .btn[data-view="${view}"]`)?.classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.getElementById(`tab-${view}`)?.classList.add('active');
+  closeDetail();
+
+  // Load content on demand
+  if (view === 'history') loadCommitLog();
+  else if (view === 'branches') loadBranches();
+  else if (view === 'status') loadStatus();
+}
+
+// ─── Commit Log ───────────────────────────────────────
+async function loadCommitLog() {
+  const container = document.getElementById('commitTimeline');
+  if (!state.repoPath) return;
+  try {
+    container.innerHTML = '<div class="loading"><div class="spinner"></div> 加载提交历史...</div>';
+    const data = await api('GET', '/api/repo/log?count=100');
+    state.commits = data.commits || [];
+    console.log(`[GitViz] Loaded ${state.commits.length} commits`);
+    renderTimeline(container);
+  } catch (e) {
+    console.error('[GitViz] loadCommitLog error:', e);
+    container.innerHTML = `<div class="empty-state">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <h3>无法加载提交历史</h3>
+      <p>${escapeHtml(e.message)}</p>
+      <button class="btn" style="margin-top:12px" onclick="loadCommitLog()">重试</button>
+    </div>`;
+  }
+}
+
+function renderTimeline(container) {
+  if (state.commits.length === 0) {
+    container.innerHTML = '<div class="empty-state"><h3>暂无提交记录</h3><p>这个仓库还没有提交</p></div>';
+    return;
+  }
+
+  let html = '';
+  for (const commit of state.commits) {
+    const dotClass = commit.is_merge ? 'merge' : (commit.parent_count === 0 ? 'root' : 'normal');
+    const refsHtml = (commit.refs || []).map(r => {
+      let cls = 'ref-badge ';
+      const name = r.name || '';
+      if (r.type === 'tag') cls += 'tag';
+      else if (name === 'main' || name === 'master') cls += 'branch-main';
+      else if (name.startsWith('dev')) cls += 'branch-dev';
+      else if (name.startsWith('feature') || name.startsWith('feat')) cls += 'branch-feature';
+      else if (name.startsWith('fix') || name.startsWith('bug')) cls += 'branch-fix';
+      else if (r.type === 'HEAD') cls += 'HEAD';
+      else cls += 'branch-dev';
+      return `<span class="${cls}">${name}</span>`;
+    }).join('');
+
+    const headIndicator = commit.is_head
+      ? '<span class="commit-head-marker" title="HEAD 指向此提交 · 这是你当前所在的位置"><span class="head-dot"></span> 当前位置</span>'
+      : '';
+
+    html += `
+      <div class="commit-entry ${commit.is_head ? 'commit-head' : ''}" onclick="selectCommit('${commit.hash}')" data-hash="${commit.hash}">
+        <div class="commit-dot ${dotClass} ${commit.is_head ? 'head-dot-animated' : ''}"></div>
+        <div class="commit-body">
+          ${refsHtml ? `<div class="commit-refs">${refsHtml}</div>` : ''}
+          <div class="commit-message">${escapeHtml(commit.message)}</div>
+          <div class="commit-meta">
+            <span class="author">${escapeHtml(commit.author)}</span>
+            <span class="date">${commit.date}</span>
+            <span class="commit-hash">${commit.hash_short}</span>
+            ${commit.is_merge ? '<span style="color:var(--accent-orange)">🔀 merge</span>' : ''}
+            ${headIndicator}
+          </div>
+        </div>
+        <div class="commit-actions">
+          <button class="btn btn-sm" onclick="event.stopPropagation();archiveCommit('${commit.hash}')" title="下载 ZIP">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+          <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();showResetModal('${commit.hash}')" title="回退到此提交">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          </button>
+        </div>
+      </div>`;
+  }
+  container.innerHTML = html;
+}
+
+// ─── Commit Detail ────────────────────────────────────
+async function selectCommit(hash) {
+  closeDetail();
+  document.querySelectorAll('.commit-entry').forEach(el => el.classList.remove('selected'));
+  document.querySelector(`.commit-entry[data-hash="${hash}"]`)?.classList.add('selected');
+
+  state.selectedCommit = hash;
+  const panel = document.getElementById('commitDetailPanel');
+  panel.classList.remove('close');
+  panel.classList.add('open');
+  panel.innerHTML = '<div class="loading"><div class="spinner"></div> 加载提交详情...</div>';
+
+  try {
+    const detail = await api('GET', `/api/repo/commit/${hash}`);
+    renderCommitDetail(detail);
+  } catch (e) {
+    panel.innerHTML = `<div class="empty-state"><h3>加载失败</h3><p>${e.message}</p></div>`;
+  }
+}
+
+function renderCommitDetail(d) {
+  const panel = document.getElementById('commitDetailPanel');
+
+  const refsHtml = (d.refs || []).map(r => `<span class="badge badge-branch" style="font-size:11px">${r.name}</span>`).join(' ');
+
+  const filesHtml = (d.files || []).map(f => {
+    const status = f.changes.trim();
+    const statusClass = status.startsWith('+') ? 'A' : status.startsWith('-') ? 'D' : 'M';
+    // Extract path from stat line
+    const path = f.path;
+    return `<div class="file-item" onclick="loadFileDiff('${d.hash}','${escapeHtml(path)}')">
+      <span class="file-path"><span class="file-status-${statusClass}">${statusClass}</span> ${escapeHtml(path)}</span>
+      <span class="file-changes">${escapeHtml(f.changes)}</span>
+    </div>`;
+  }).join('');
+
+  const diffHtml = d.diff ? renderDiff(d.diff) : '';
+
+  panel.innerHTML = `
+    <div class="detail-header">
+      <h3 id="detailTitle">${escapeHtml(d.message)}</h3>
+      <button class="detail-close" onclick="closeDetail()">&times;</button>
+    </div>
+    <div class="detail-meta">
+      ${refsHtml ? `<div style="margin-bottom:8px">${refsHtml}</div>` : ''}
+      <div class="detail-meta-item"><span class="label">作者</span><span class="value">${escapeHtml(d.author)}</span></div>
+      <div class="detail-meta-item"><span class="label">邮箱</span><span class="value">${escapeHtml(d.email)}</span></div>
+      <div class="detail-meta-item"><span class="label">日期</span><span class="value">${d.date}</span></div>
+      <div class="detail-meta-item"><span class="label">提交</span><span class="value mono">${d.hash}</span></div>
+      ${d.is_merge ? `<div class="detail-meta-item"><span class="label">类型</span><span class="value" style="color:var(--accent-orange)">🔀 合并提交</span></div>` : ''}
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn btn-sm btn-primary" onclick="archiveCommit('${d.hash}')">📦 下载 ZIP</button>
+        <button class="btn btn-sm btn-danger" onclick="closeDetail();showResetModal('${d.hash}')">⏪ 回退到此</button>
+      </div>
+    </div>
+    ${d.body ? `<div class="detail-body">${escapeHtml(d.body)}</div>` : ''}
+    ${filesHtml ? `<div class="detail-files"><h4>变更文件 (${d.files.length})</h4>${filesHtml}</div>` : ''}
+    ${diffHtml ? `<div class="diff-view">${diffHtml}</div>` : '<p style="color:var(--text-tertiary);font-size:13px">暂无 diff 信息</p>'}
+  `;
+}
+
+function renderDiff(diffText) {
+  if (!diffText) return '';
+  const lines = diffText.split('\n');
+  let html = '';
+  let currentFile = '';
+
+  for (const line of lines) {
+    if (line.startsWith('diff --git')) {
+      if (currentFile) {
+        // Close previous file
+      }
+      currentFile = line;
+      const filePath = line.split(' b/').pop() || '';
+      html += `<div class="diff-header">${escapeHtml(filePath)}</div>`;
+      continue;
+    }
+    if (line.startsWith('index ') || line.startsWith('--- ') || line.startsWith('+++ ')) {
+      continue;
+    }
+    if (line.startsWith('@@')) {
+      html += `<div class="diff-line hunk"><span class="diff-line-num"></span>${escapeHtml(line)}</div>`;
+      continue;
+    }
+    if (line.startsWith('+')) {
+      html += `<div class="diff-line add"><span class="diff-line-num">+</span>${escapeHtml(line.substring(1))}</div>`;
+    } else if (line.startsWith('-')) {
+      html += `<div class="diff-line del"><span class="diff-line-num">-</span>${escapeHtml(line.substring(1))}</div>`;
+    } else {
+      html += `<div class="diff-line"><span class="diff-line-num"> </span>${escapeHtml(line)}</div>`;
+    }
+  }
+  return html;
+}
+
+function loadFileDiff(hash, filePath) {
+  // Expand file diff inline - for now just show a toast
+  showToast(`查看文件差异: ${filePath}`, '');
+  // Future enhancement: load per-file diff
+}
+
+function closeDetail() {
+  const panel = document.getElementById('commitDetailPanel');
+  panel.classList.remove('open');
+  panel.classList.add('close');
+  document.querySelectorAll('.commit-entry').forEach(el => el.classList.remove('selected'));
+  state.selectedCommit = null;
+}
+
+// ─── Branches ─────────────────────────────────────────
+async function loadBranches() {
+  const container = document.getElementById('tab-branches');
+  if (!state.repoPath) return;
+  try {
+    container.innerHTML = '<div class="loading"><div class="spinner"></div> 加载分支信息...</div>';
+    const data = await api('GET', '/api/repo/branches');
+    state.branches = data.branches || [];
+    renderBranches(container);
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state"><h3>加载失败</h3><p>${e.message}</p></div>`;
+  }
+}
+
+function renderBranches(container) {
+  const branches = state.branches;
+  if (branches.length === 0) {
+    container.innerHTML = '<div class="empty-state"><h3>暂无分支</h3></div>';
+    return;
+  }
+
+  let html = '<div class="branch-list">';
+  for (const b of branches) {
+    const isCurrent = b.name === document.getElementById('displayBranch').textContent
+      || b.name === `remotes/origin/${document.getElementById('displayBranch').textContent}`;
+    html += `
+      <div class="branch-item ${isCurrent ? 'current' : ''}">
+        <div>
+          <span class="branch-name">${escapeHtml(b.display_name)}</span>
+          ${isCurrent ? '<span class="branch-current-tag">当前</span>' : ''}
+          ${b.is_remote ? '<span style="font-size:11px;color:var(--text-tertiary);margin-left:6px">🌐 远程</span>' : ''}
+          ${b.short_hash ? `<div class="branch-meta">${b.short_hash}</div>` : ''}
+        </div>
+        <div class="branch-actions">
+          ${!b.is_remote ? `<button class="btn btn-sm" onclick="switchToBranch('${b.name}')" title="切换到该分支">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            切换
+          </button>` : ''}
+        </div>
+      </div>`;
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+async function switchToBranch(name) {
+  try {
+    const result = await api('POST', '/api/repo/checkout', { branch: name });
+    if (result.info) {
+      document.getElementById('displayBranch').textContent = result.info.current_branch;
+      document.getElementById('displayCommitCount').textContent = `${result.info.commit_count} commits`;
+    }
+    showToast(`已切换到 ${name}`, 'success');
+    loadCommitLog();
+    loadBranches();
+    loadStatus();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ─── Status ───────────────────────────────────────────
+async function loadStatus() {
+  const container = document.getElementById('tab-status');
+  if (!state.repoPath) return;
+  try {
+    container.innerHTML = '<div class="loading"><div class="spinner"></div> 加载工作区状态...</div>';
+    const data = await api('GET', '/api/repo/status');
+    renderStatus(container, data.changes || []);
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state"><h3>加载失败</h3><p>${e.message}</p></div>`;
+  }
+}
+
+function renderStatus(container, changes) {
+  if (changes.length === 0) {
+    container.innerHTML = `
+      <div class="status-clean">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <h3>工作区干净</h3>
+        <p>没有未提交的更改</p>
+      </div>`;
+    return;
+  }
+
+  let html = '<div class="status-list">';
+  for (const c of changes) {
+    const icon = c.path.startsWith('?') ? '?' : c.index_status !== ' ' ? c.index_status : c.worktree_status;
+    html += `<div class="status-item">
+      <span class="status-icon ${icon}">${icon === '?' ? '?' : icon === 'M' ? '✏️' : icon === 'A' ? '➕' : icon === 'D' ? '🗑️' : icon}</span>
+      <span class="status-path">${escapeHtml(c.path)}</span>
+      <span class="status-type">${c.type}</span>
+    </div>`;
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+// ─── Archive ──────────────────────────────────────────
+function archiveCommit(hash) {
+  // Trigger browser download directly — the server sends Content-Disposition: attachment
+  // so the browser will download the file without navigating away from the page
+  showToast('正在下载压缩包...', 'success');
+  window.location.href = `/api/repo/commit/${hash}/download`;
+  // Clean up temp file on server after delay
+  setTimeout(() => {
+    fetch(`/api/repo/commit/${hash}/cleanup`, { method: 'POST' }).catch(() => {});
+  }, 3000);
+}
+
+// ─── Reset ────────────────────────────────────────────
+function showResetModal(prefillHash) {
+  const hash = prefillHash || state.selectedCommit;
+  if (!hash) {
+    showToast('请先在时间线中点击选择一个提交', 'error');
+    return;
+  }
+  document.getElementById('resetTargetHash').textContent = hash.substring(0, 12) + '...';
+  document.getElementById('resetTargetHash').dataset.hash = hash;
+  document.getElementById('resetModal').classList.add('active');
+  document.getElementById('alsoArchive').checked = false;
+  document.getElementById('hardWarning').style.display = 'none';
+  document.getElementById('resetMode').value = 'soft';
+}
+
+function closeResetModal() {
+  document.getElementById('resetModal').classList.remove('active');
+}
+
+function executeReset() {
+  const hash = document.getElementById('resetTargetHash').dataset.hash;
+  const mode = document.getElementById('resetMode').value;
+  const alsoArchive = document.getElementById('alsoArchive').checked;
+
+  if (mode === 'hard') {
+    if (!confirm('⚠️ 硬回退将丢弃目标提交之后的所有更改！\n\n此操作不可逆，确定要继续吗？')) {
+      return;
+    }
+  } else {
+    if (!confirm(`确认要${mode === 'soft' ? '软' : '混合'}回退到此提交吗？`)) {
+      return;
+    }
+  }
+
+  (async () => {
+    closeResetModal();
+    showToast('正在执行回退...');
+    try {
+      if (alsoArchive) {
+        await api('POST', `/api/repo/commit/${hash}/archive`);
+      }
+      const result = await api('POST', '/api/repo/reset', { hash, mode });
+      showToast(result.message, 'success');
+      // Refresh everything
+      refreshRepo();
+    } catch (e) {
+      showToast(`回退失败: ${e.message}`, 'error');
+    }
+  })();
+}
+
+// ─── Create Branch ────────────────────────────────────
+function showCreateBranchModal() {
+  document.getElementById('newBranchName').value = '';
+  document.getElementById('createBranchModal').classList.add('active');
+}
+
+function closeCreateBranchModal() {
+  document.getElementById('createBranchModal').classList.remove('active');
+}
+
+async function executeCreateBranch() {
+  const name = document.getElementById('newBranchName').value.trim();
+  if (!name) return showToast('请输入分支名称', 'error');
+  closeCreateBranchModal();
+  try {
+    const result = await api('POST', '/api/repo/branch/create', { name });
+    showToast(result.message, 'success');
+    loadBranches();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+// ─── Repo Info ────────────────────────────────────────
+async function showRepoInfo() {
+  try {
+    const info = await api('GET', '/api/repo/info');
+    const content = document.getElementById('repoInfoContent');
+    content.innerHTML = `
+      <div style="margin-top:12px">
+        <div class="detail-meta-item"><span class="label">名称</span><span class="value">${escapeHtml(info.name)}</span></div>
+        <div class="detail-meta-item"><span class="label">路径</span><span class="value mono" style="font-size:12px">${escapeHtml(info.path)}</span></div>
+        <div class="detail-meta-item"><span class="label">当前分支</span><span class="value">${escapeHtml(info.current_branch)}</span></div>
+        <div class="detail-meta-item"><span class="label">提交总数</span><span class="value">${info.commit_count}</span></div>
+        <div class="detail-meta-item"><span class="label">远程地址</span><span class="value mono" style="font-size:12px">${escapeHtml(info.remote || '(无)')}</span></div>
+        <div class="detail-meta-item"><span class="label">分支数</span><span class="value">${(info.branches || []).length}</span></div>
+        ${info.has_uncommitted ? '<div class="detail-meta-item"><span class="label">状态</span><span class="value" style="color:var(--accent-orange)">有未提交的更改</span></div>' : ''}
+      </div>`;
+    document.getElementById('repoInfoModal').classList.add('active');
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+function closeRepoInfoModal() {
+  document.getElementById('repoInfoModal').classList.remove('active');
+}
+
+// ─── Recent Repos ─────────────────────────────────────
+async function loadRecentRepos() {
+  try {
+    const data = await api('GET', '/api/recent');
+    renderRecentRepos(data.repos || []);
+  } catch (e) {
+    // Silently fail
+  }
+}
+
+function renderRecentRepos(repos) {
+  const container = document.getElementById('recentItems');
+  if (!repos || repos.length === 0) {
+    container.innerHTML = '<div class="recent-empty">暂无最近打开的仓库</div>';
+    return;
+  }
+  container.innerHTML = repos.map(r =>
+    `<div class="recent-item" data-repo="${escapeAttr(r)}" onclick="doOpenRepo(this.dataset.repo)">
+      <span class="recent-item-path">${escapeHtml(r)}</span>
+      <span class="recent-item-icon">→</span>
+    </div>`
+  ).join('');
+}
+
+// ─── Reset Mode Warning ───────────────────────────────
+document.getElementById('resetMode')?.addEventListener('change', function() {
+  document.getElementById('hardWarning').style.display = this.value === 'hard' ? 'block' : 'none';
+});
+
+// ─── Scan for repos ────────────────────────────────────
+async function scanPath(dirPath) {
+  const results = document.getElementById('scanResults');
+  const loading = document.getElementById('scanLoading');
+  const list = document.getElementById('scanList');
+
+  results.style.display = 'block';
+  loading.style.display = 'flex';
+  list.innerHTML = '';
+
+  try {
+    const data = await api('POST', '/api/scan', { path: dirPath });
+    loading.style.display = 'none';
+
+    if (data.repos && data.repos.length > 0) {
+      let html = '<div style="border:1px solid var(--border-secondary);border-radius:var(--radius);overflow:hidden">';
+      html += '<div style="padding:8px 12px;background:var(--bg-tertiary);font-size:12px;color:var(--text-secondary);border-bottom:1px solid var(--border-secondary)">';
+      html += `找到 ${data.count} 个 Git 仓库</div>`;
+      for (const repo of data.repos) {
+        const name = repo.split(/[\\/]/).pop();
+        html += `<div class="recent-item" data-repo="${escapeAttr(repo)}" onclick="doOpenRepo(this.dataset.repo)" title="${escapeHtml(repo)}">
+          <span><span style="color:var(--accent-green);margin-right:6px">📁</span><span class="recent-item-path">${escapeHtml(repo)}</span></span>
+          <span class="recent-item-icon">→</span>
+        </div>`;
+      }
+      html += '</div>';
+      list.innerHTML = html;
+    } else {
+      list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-tertiary);border:1px solid var(--border-secondary);border-radius:var(--radius)">未找到 Git 仓库</div>';
+    }
+  } catch (e) {
+    loading.style.display = 'none';
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--accent-red)">扫描失败: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function quickScan() {
+  const results = document.getElementById('scanResults');
+  const loading = document.getElementById('scanLoading');
+  const list = document.getElementById('scanList');
+
+  results.style.display = 'block';
+  loading.style.display = 'flex';
+  list.innerHTML = '';
+
+  try {
+    const data = await api('GET', '/api/scan/quick');
+    loading.style.display = 'none';
+
+    if (data.repos && data.repos.length > 0) {
+      let html = '<div style="border:1px solid var(--border-secondary);border-radius:var(--radius);overflow:hidden">';
+      html += '<div style="padding:8px 12px;background:var(--bg-tertiary);font-size:12px;color:var(--text-secondary);border-bottom:1px solid var(--border-secondary)">';
+      html += `🔍 找到 ${data.count} 个 Git 仓库（点击打开）</div>`;
+      for (const repo of data.repos) {
+        const name = repo.split(/[\\/]/).pop();
+        html += `<div class="recent-item" data-repo="${escapeAttr(repo)}" onclick="doOpenRepo(this.dataset.repo)" title="${escapeHtml(repo)}">
+          <span><span style="color:var(--accent-green);margin-right:6px">📁</span>
+            <span class="recent-item-path">${escapeHtml(repo)}</span>
+          </span>
+          <span class="recent-item-icon">→</span>
+        </div>`;
+      }
+      html += '</div>';
+      list.innerHTML = html;
+    } else {
+      list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-tertiary);border:1px solid var(--border-secondary);border-radius:var(--radius)">未找到 Git 仓库，请手动输入路径</div>';
+    }
+  } catch (e) {
+    loading.style.display = 'none';
+    list.innerHTML = `<div style="padding:16px;text-align:center;color:var(--accent-red)">扫描失败: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function scanParentDirs() {
+  await quickScan();
+}
+
+// ─── Utility ──────────────────────────────────────────
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ─── Init ─────────────────────────────────────────────
+loadRecentRepos();
+</script>
+</body>
+</html>
